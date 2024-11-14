@@ -4,17 +4,17 @@
 %define BOARD_FILE 'board.txt'
 
 ; how to represent everything
-%define WALL_CHAR '#'
+%define WALL_CHAR '!'
 %define PLAYER_CHAR 'O'
 
 ; the size of the game screen in characters
-%define HEIGHT 20
-%define WIDTH 40
+%define HEIGHT 22
+%define WIDTH 24
 
 ; the player starting position.
 ; top left is considered (0,0)
-%define STARTX 1
-%define STARTY 1
+%define STARTX 12
+%define STARTY 0
 
 ; these keys do things
 %define EXITCHAR 'x'
