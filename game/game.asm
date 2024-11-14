@@ -5,7 +5,8 @@
 
 ; how to represent everything
 %define WALL_CHAR '!'
-%define PLAYER_CHAR 'O'
+%define PLAYER_CHAR '['
+%define PLAYER_CHAR2 ']'
 
 ; the size of the game screen in characters
 %define HEIGHT 22
@@ -284,7 +285,10 @@ render:
 				; if both were equal, print the player
 				push	PLAYER_CHAR
 				call	putchar
-				add		esp, 4
+				push	PLAYER_CHAR2
+				call	putchar
+				add		esp, 8
+				inc		DWORD [ebp - 8]
 				jmp		print_end
 			print_board:
 				; otherwise print whatever's in the buffer
