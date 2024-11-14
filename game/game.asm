@@ -127,13 +127,13 @@ asm_main:
 			dec		DWORD [ypos]
 			jmp		input_end
 		move_left:
-			dec		DWORD [xpos]
+			sub		DWORD [xpos],2
 			jmp		input_end
 		move_down:
 			inc		DWORD [ypos]
 			jmp		input_end
 		move_right:
-			inc		DWORD [xpos]
+			add		DWORD [xpos],2
 		input_end:
 
 		; (W * y) + x = pos
