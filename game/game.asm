@@ -287,7 +287,7 @@ render:
 				call	putchar
 				push	PLAYER_CHAR2
 				call	putchar
-				add		esp, 8
+				add		esp, 4
 				inc		DWORD [ebp - 8]
 				jmp		print_end
 			print_board:
