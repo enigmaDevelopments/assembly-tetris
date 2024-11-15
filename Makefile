@@ -3,7 +3,7 @@ NAME=game
 all: game
 
 clean:
-	rm -rf game game.o
+	rm -rf assembly-tetris game.o
 
 game: game.asm
 	nasm -f elf game.asm
