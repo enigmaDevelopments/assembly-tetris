@@ -46,6 +46,7 @@ segment .data
 							RIGHTCHAR,"=RIGHT / ", \
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
+	true db "true",0
 
 segment .bss
 
@@ -55,6 +56,8 @@ segment .bss
 	; these variables store the current player position
 	xpos	resd	1
 	ypos	resd	1
+	time 	resd	1
+	level	resb	1
 
 segment .text
 
@@ -63,6 +66,7 @@ segment .text
 	global  raw_mode_off
 	global  init_board
 	global  render
+	global 	timer
 
 	extern	system
 	extern	putchar
@@ -86,6 +90,9 @@ asm_main:
 	; set the player at the proper start position
 	mov		DWORD [xpos], STARTX
 	mov		DWORD [ypos], STARTY
+	rdtsc
+	mov [time], eax; set initial time
+	mov [level], byte 1; set level to 1
 
 	; the game happens in this loop
 	; the steps are...
@@ -111,6 +118,7 @@ asm_main:
 		mov		edi, DWORD [ypos]
 
 		; choose what to do
+		call timer; see if the block should fall on its own
 		cmp		eax, EXITCHAR
 		je		game_loop_end
 		cmp		eax, UPCHAR
@@ -324,3 +332,29 @@ render:
 	mov		esp, ebp
 	pop		ebp
 	ret
+
+timer:
+	pusha
+
+	rdtsc; get clock cycles
+	mov edx, eax; save cycles to edx
+	mov ebx, [time]; get pervious cycles
+	sub eax, ebx; get dela time
+	mov ecx, eax
+	
+	movzx eax, byte [level]
+	mov ebx, 013333333h
+	mul ebx
+	mov ebx, 0CCCCCCCCh
+	sub ebx,eax
+	mov eax, ebx
+
+	cmp ecx,ebx
+	jb time_not_up
+		rdtsc; get clock cycles
+		mov [time], eax;save clock cycles
+		inc DWORD [ypos]
+	time_not_up:
+	popa
+	ret
+
