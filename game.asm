@@ -4,7 +4,7 @@
 %define BOARD_FILE 'board.txt'
 
 ; how to represent everything
-%define WALL_CHAR '!'
+%define AIR_CHAR ' '
 %define PLAYER_CHAR '['
 %define PLAYER_CHAR2 ']'
 
@@ -152,8 +152,8 @@ asm_main:
 		mul		DWORD [ypos]
 		add		eax, DWORD [xpos]
 		lea		eax, [board + eax]
-		cmp		BYTE [eax], WALL_CHAR
-		jne		valid_move
+		cmp		BYTE [eax], AIR_CHAR
+		je		valid_move
 			; opps, that was an invalid move, reset
 			mov		DWORD [xpos], esi
 			mov		DWORD [ypos], edi
