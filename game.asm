@@ -46,8 +46,6 @@ segment .data
 							RIGHTCHAR,"=RIGHT / ", \
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
-	true db "true",0
-
 segment .bss
 
 	; this array stores the current rendered gameboard (HxW)
@@ -58,6 +56,8 @@ segment .bss
 	ypos	resd	1
 	time 	resd	1
 	level	resb	1
+	used_blocks resb 2
+	next_blocks resb 2
 
 segment .text
 
@@ -67,6 +67,7 @@ segment .text
 	global  init_board
 	global  render
 	global 	timer
+	global random
 
 	extern	system
 	extern	putchar
@@ -93,6 +94,7 @@ asm_main:
 	rdtsc
 	mov [time], eax; set initial time
 	mov [level], byte 1; set level to 1
+	mov [used_blocks], word 077Fh;set used blocks to defult mask and count
 
 	; the game happens in this loop
 	; the steps are...
@@ -358,3 +360,47 @@ timer:
 	popa
 	ret
 
+random:
+	pusha
+	mov eax, [time]
+	mov ebx, eax
+	shl ebx, 13
+	xor eax, ebx
+	mov ebx, eax
+	shr ebx, 17
+	xor eax, ebx
+	mov ebx, eax
+	shl ebx, 5
+	xor eax, ebx;get a random number
+
+	xor edx,edx
+	mov ecx, [used_blocks + 1]
+	div ecx; edx = eax mod edx
+	inc edx
+
+	mov bl, [used_blocks]
+	mov bh, 10000000b
+	mov ecx, edx
+	xor dh,dh
+	bit_finder:
+		inc dh
+		shr bh, 1
+		test bl, bh
+		jz bit_finder
+			loop bit_finder;find the open spot at the number provided
+	
+	not bh 
+	and [used_blocks],bh; remove the used bit from the filter
+
+	cmp [used_blocks + 1], byte 1
+	jne dont_reset_blocks
+		mov [used_blocks], word 087Fh;resets used blocks
+	dont_reset_blocks:
+
+	dec byte [used_blocks + 1]
+
+	mov dl, [next_blocks]
+	mov [next_blocks], dx; this breaks everything and I dont know why lol
+	
+	popa
+	ret
