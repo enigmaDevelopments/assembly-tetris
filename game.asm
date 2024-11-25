@@ -95,6 +95,8 @@ asm_main:
 	mov [time], eax; set initial time
 	mov [level], byte 1; set level to 1
 	mov [used_blocks], word 077Fh;set used blocks to defult mask and count
+	call random
+	call random;initialize first blocks
 
 	; the game happens in this loop
 	; the steps are...
@@ -362,7 +364,7 @@ timer:
 
 random:
 	pusha
-	mov eax, [time]
+	rdtsc
 	mov ebx, eax
 	shl ebx, 13
 	xor eax, ebx
@@ -374,7 +376,7 @@ random:
 	xor eax, ebx;get a random number
 
 	xor edx,edx
-	mov ecx, [used_blocks + 1]
+	movzx ecx, byte [used_blocks + 1]
 	div ecx; edx = eax mod edx
 	inc edx
 
@@ -399,8 +401,8 @@ random:
 
 	dec byte [used_blocks + 1]
 
-	mov dl, [next_blocks]
-	mov [next_blocks], dx; this breaks everything and I dont know why lol
+	mov dl, [next_blocks + 1]
+	mov [next_blocks], dx
 	
 	popa
 	ret
