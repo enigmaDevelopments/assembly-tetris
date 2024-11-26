@@ -23,6 +23,8 @@
 %define LEFTCHAR 'a'
 %define DOWNCHAR 's'
 %define RIGHTCHAR 'd'
+%define CLOCKWISECHAR 'e'
+%define COUNTERCLOCKWISECHAR 'q'
 
 
 segment .data
@@ -47,39 +49,39 @@ segment .data
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
 	tetrominoes         db -2,0, 0,0, 2,0, 4,0, \
-							0,0, 0,2, 0,4, 0,6, \
+							0,0, 0,1, 0,2, 0,3, \
 							-2,0, 0,0, 2,0, 4,0, \
-							0,0, 0,2, 0,4, 0,6, \
+							0,0, 0,1, 0,2, 0,3, \
 							\
-							0,0, 0,2, 2,0, 2,2, \
-							0,0, 0,2, 2,0, 2,2, \
-							0,0, 0,2, 2,0, 2,2, \
-							0,0, 0,2, 2,0, 2,2, \
+							0,0, 0,1, 2,0, 2,1, \
+							0,0, 0,1, 2,0, 2,1, \
+							0,0, 0,1, 2,0, 2,1, \
+							0,0, 0,1, 2,0, 2,1, \
 							\
-							-2,0, 0,0, 0,2, 2,0, \
-							0,0, 2,0, 4,0, 2,2, \
-							-2,2, 0,0, 2,0, 2,2,\
-							0,2, 2,0, 2,2, 2,4, \
+							-2,0, 0,0, 0,1, 2,0, \
+							0,0, 0,1, 0,2, 2,1, \
+							-2,1, 0,0, 0,1, 2,1,\
+							-2,1, 0,0, 0,1, 0,2, \
 							\
-							-2,0, 0,0, 0,2, 2,2, \
-							-2,2, -2,4, 0,0, 0,4\
-							-2,0, 0,0, 0,2, 2,2, \
-							-2,2, -2,4, 0,0, 0,4\
+							-2,0, 0,0, 0,1, 2,1, \
+							-2,1, -2,2, 0,0, 0,1,\
+							-2,0, 0,0, 0,1, 2,1, \
+							-2,1, -2,2, 0,0, 0,1,\
 							\
-							-2,2, 0,0, 0,2, 2,0, \
-							-2,0, -2,2, 0,2, 0,4, \
-							-2,2, 0,0, 0,2, 2,0, \
-							-2,0, -2,2, 0,2, 0,4, \
+							-2,1, 0,0, 0,1, 2,0, \
+							0,0, 0,1, 2,1, 2,2, \
+							-2,1, 0,0, 0,1, 2,0, \
+							0,0, 0,1, 2,1, 2,2, \
 							\
-							-2,0, 0,0, 2,0, 2,2, \
-							0,0, 0,2, 0,4, 2,0, \
-							-2,0, -2,2, 0,2, 2,2, \
-							0,4, 2,0, 2,2, 2,4, \
+							-2,0, 0,0, 2,0, 2,1, \
+							0,0, 0,1, 0,2, 2,0, \
+							-2,0, -2,1, 0,1, 2,1, \
+							0,2, 2,0, 2,1, 2,2, \
 							\
-							-2,0,-2,2, 0,0, 2,0, \
-							0,0, 0,2, 0,4, 2,4, \
-							-2,2, 0,2, 2,0, 2,2, \
-							0,0, 0,2, 2,2, 2,4 
+							-2,0,-2,1, 0,0, 2,0, \
+							0,0, 0,1, 0,2, 2,2, \
+							-2,1, 0,1, 2,0, 2,1, \
+							0,0, 2,0, 2,1, 2,2 
 segment .bss
 
 	; this array stores the current rendered gameboard (HxW)
@@ -92,6 +94,7 @@ segment .bss
 	level	resb	1
 	used_blocks resb 2
 	next_blocks resb 2
+	rotation resb 1
 
 segment .text
 
@@ -157,6 +160,11 @@ asm_main:
 
 		; choose what to do
 		call timer; see if the block should fall on its own
+		cmp		eax, CLOCKWISECHAR
+		je		rotate_clockwise
+		cmp		eax, COUNTERCLOCKWISECHAR
+		je		rotate_counterclockwise
+		je		game_loop_end
 		cmp		eax, EXITCHAR
 		je		game_loop_end
 		cmp		eax, UPCHAR
@@ -170,6 +178,18 @@ asm_main:
 		jmp		input_end			; or just do nothing
 
 		; move the player according to the input character
+		rotate_clockwise:
+			inc		byte [rotation]
+			cmp		byte [rotation], byte 4
+			jne		input_end
+				mov [rotation], byte 0
+			jmp		input_end
+		rotate_counterclockwise:
+			dec 	byte [rotation]
+			cmp		byte [rotation], byte -1
+			jne		input_end
+				mov [rotation], byte 3
+			jmp		input_end
 		move_up:
 			dec		DWORD [ypos]
 			jmp		input_end
@@ -295,8 +315,20 @@ render:
 
 	; two ints, for two loop counters
 	; ebp-4, ebp-8
-	sub		esp, 8
+	; plus 8 bytes, for storing player positions
+	sub		esp, 16
 
+	;save player positions
+	mov eax, tetrominoes
+	movzx ebx, byte [next_blocks]
+	movzx ecx, byte [rotation]
+	shl ebx, 5
+	shl ecx, 3
+	add ebx, ecx
+	mov ecx, dword [eax + ebx]
+	mov [ebp - 16], ecx
+	mov ecx, dword [eax + ebx + 4]
+	mov [ebp - 12], ecx
 	; clear the screen
 	push	clear_screen_code
 	call	printf
@@ -320,20 +352,29 @@ render:
 		x_loop_start:
 		cmp		DWORD [ebp - 8], WIDTH
 		je 		x_loop_end
+			mov ecx, -18
+			player_check_loop:
+			add ecx, 2
+			cmp ecx, -8
+			je print_board
 
 			; check if (xpos,ypos)=(x,y)
 			mov		eax, DWORD [xpos]
+			movsx	ebx, BYTE [ebp + ecx]
+			add		eax, ebx
 			cmp		eax, DWORD [ebp - 8]
-			jne		print_board
+			jne		player_check_loop
 			mov		eax, DWORD [ypos]
+			movsx	ebx, BYTE [ebp + ecx + 1]
+			sub		eax, ebx
 			cmp		eax, DWORD [ebp - 4]
-			jne		print_board
+			jne		player_check_loop
 				; if both were equal, print the player
 				push	PLAYER_CHAR
 				call	putchar
 				push	PLAYER_CHAR2
 				call	putchar
-				add		esp, 4
+				add		esp, 8
 				inc		DWORD [ebp - 8]
 				jmp		print_end
 			print_board:
@@ -417,7 +458,7 @@ random:
 	mov bl, [used_blocks]
 	mov bh, 10000000b
 	mov ecx, edx
-	xor dh,dh
+	mov dh, -1
 	bit_finder:
 		inc dh
 		shr bh, 1
