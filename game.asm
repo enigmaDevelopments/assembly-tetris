@@ -104,7 +104,8 @@ segment .text
 	global  init_board
 	global  render
 	global 	timer
-	global random
+	global 	random
+	global 	collition_test
 
 	extern	system
 	extern	putchar
@@ -206,18 +207,39 @@ asm_main:
 		; (W * y) + x = pos
 
 		; compare the current position to the wall character
-		mov		eax, WIDTH
-		mul		DWORD [ypos]
-		add		eax, DWORD [xpos]
-		lea		eax, [board + eax]
-		cmp		BYTE [eax], AIR_CHAR
-		je		valid_move
-			; opps, that was an invalid move, reset
-			mov		DWORD [xpos], esi
-			mov		DWORD [ypos], edi
-		valid_move:
-
+		movzx ebx, byte [next_blocks]
+		movzx eax, byte [rotation]
+		shl ebx, 5
+		shl eax, 3
+		add ebx, eax
+		mov eax, tetrominoes
+		add eax,ebx
+		inc eax
+		mov ecx, 4
+		dec eax
+		collition_loop:
+			mov ebx, [xpos]
+			movsx edx, byte [eax]
+			add ebx, edx
+			inc eax
+			push ebx
+			mov ebx, [ypos]
+			movzx edx, byte [eax]
+			sub ebx, edx
+			inc eax
+			push ebx
+			call collition_test	
+			jne		invalid_move
+			add		esp, 8
+				loop collition_loop
+	add		esp, 1
 	jmp		game_loop
+	invalid_move:
+		; opps, that was an invalid move, reset
+		add		esp, 8
+		mov		DWORD [xpos], esi
+		mov		DWORD [ypos], edi
+		jmp		game_loop
 	game_loop_end:
 
 	; restore old terminal functionality
@@ -480,4 +502,16 @@ random:
 	mov [next_blocks], dx
 	
 	popa
+	ret
+
+collition_test:
+	enter 0,0
+	pusha
+	mov		eax, WIDTH
+	mul		DWORD [ebp+8]
+	add		eax, DWORD [ebp+12]
+	lea		eax, [board + eax]
+	cmp		BYTE [eax], AIR_CHAR
+	popa
+	leave
 	ret
