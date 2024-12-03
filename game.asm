@@ -603,12 +603,10 @@ check_collision:
     shl eax, 3                    ; Rotation index * 8
     add ebx, eax                  ; Offset = shape + rotation
     mov eax, tetrominoes          ; Base address of Tetrimino data
-    add eax, ebx                  ; Adjusted to current Tetrimino position
-    inc eax                       ; Move to the first coordinate
+    add eax, ebx                  ; Adjusted to current Tetrimino position      
 
     ; Prepare loop for all 4 blocks in the Tetrimino
     mov ecx, 4
-    dec eax                       ; Adjust pointer for the loop
 	collision_loop:
 		; Calculate absolute x coordinate
 		mov ebx, DWORD [ebp+8]        ; Load xpos
@@ -635,9 +633,6 @@ check_collision:
 
 	collision_detected:
 		mov eax, 1                    ; Collision detected
-		 jmp cleanup                   ; Jump to cleanup section
-
-	cleanup:
 		add esp, 8                    ; Clean up the stack
 		jmp exit_function
 
@@ -673,8 +668,9 @@ auto_drop:
 	; Test collision for the next downward position
     mov eax, DWORD [xpos]    ; Load xpos
     mov ebx, DWORD [ypos]    ; Load ypos
+	movzx ecx,byte [rotation]; Load rotation
     dec ebx                  ; Simulate downward movement
-    push DWORD [rotation]    ; Push rotation
+    push ecx				 ; Push rotation
     push ebx                 ; Push ypos - 1
     push eax                 ; Push xpos
     call check_collision     ; Check for collision
