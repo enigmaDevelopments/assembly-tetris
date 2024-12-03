@@ -15,7 +15,7 @@
 ; the player starting position.
 ; top left is considered (0,0)
 %define STARTX 12
-%define STARTY 0
+%define STARTY 3
 
 ; these keys do things
 %define EXITCHAR 'x'
@@ -89,13 +89,13 @@ segment .bss
 	board	resb	(HEIGHT * WIDTH)
 
 	; these variables store the current player position
-	xpos	resd	1
-	ypos	resd	1
+	xpos	resb	2
+	ypos	resb	2
 	time 	resd	1
 	level	resb	1
 	used_blocks resb 2
 	next_blocks resb 2
-	rotation resb 1
+	rotation resb 2
 
 	auto_drop_enabled resb 1  ; Flag to enable or disable auto-drop
 	termios_current resb 32 ; Buffer for current termios settings
@@ -114,6 +114,8 @@ segment .text
 	global 	collition_test
 	global auto_drop
 	global check_collision
+	global write_pos
+	global get_pos
 
 	extern	system
 	extern	putchar
@@ -135,8 +137,11 @@ asm_main:
 	call	init_board
 
 	; set the player at the proper start position
-	mov		DWORD [xpos], STARTX
-	mov		DWORD [ypos], STARTY
+	mov		byte [xpos], STARTX
+	mov		byte [ypos], STARTY
+	mov		byte [xpos+1], STARTX
+	mov		byte [ypos+1], STARTY
+	
 	rdtsc
 	mov [time], eax; set initial time
 	mov [level], byte 1; set level to 1
@@ -158,7 +163,7 @@ asm_main:
 			call render
 
 			; Perform auto-drop
-			call auto_drop
+			call timer
 
 			; Process player input
 			call process_input
@@ -218,19 +223,19 @@ asm_main:
 			jmp input_end
 
 		move_up:
-			dec DWORD [ypos]
+			dec byte [ypos]
 			jmp input_end
 
 		move_left:
-			sub DWORD [xpos], 2
+			sub byte [xpos], 2
 			jmp input_end
 
 		move_down:
-			inc DWORD [ypos]
+			inc byte [ypos]
 			jmp input_end
 
 		move_right:
-			add DWORD [xpos], 2
+			add byte [xpos], 2
 
 		input_end:
 			; Calculate new position and test collision
@@ -459,12 +464,12 @@ render:
 			je print_board
 
 			; check if (xpos,ypos)=(x,y)
-			mov		eax, DWORD [xpos]
+			movzx	eax, BYTE [xpos]
 			movsx	ebx, BYTE [ebp + ecx]
 			add		eax, ebx
 			cmp		eax, DWORD [ebp - 8]
 			jne		player_check_loop
-			mov		eax, DWORD [ypos]
+			movzx	eax, BYTE [ypos]
 			movsx	ebx, BYTE [ebp + ecx + 1]
 			sub		eax, ebx
 			cmp		eax, DWORD [ebp - 4]
@@ -530,15 +535,13 @@ timer:
     cmp ecx, ebx             ; Compare elapsed time with interval
     jb time_not_up           ; If not enough time has passed, exit
 
-    ; Enough time has passed: update timer and indicate drop
-    rdtsc                    ; Get current clock cycles
-    mov [time], eax          ; Save the current cycles
-    mov eax, 1               ; Set flag indicating it's time to drop
-    popa
-    ret
-
-time_not_up:
-    mov eax, 0               ; Set flag indicating not time to drop
+    	; Enough time has passed: update timer and drop
+    	rdtsc                    ; Get current clock cycles
+    	mov [time], eax          ; Save the current cycles
+    	inc byte [ypos] 		 ; Move down
+    	call check_collision     ; Check for collision
+		call render
+	time_not_up:
     popa
     ret
 
@@ -598,7 +601,7 @@ check_collision:
 
     ; Calculate the starting position in the Tetrimino data
     movzx ebx, byte [next_blocks] ; Load Tetrimino shape index
-    mov eax, DWORD [ebp+16]       ; Load rotation directly
+    movzx eax, byte [rotation]    ; Load rotation directly
     shl ebx, 5                    ; Shape index * 32
     shl eax, 3                    ; Rotation index * 8
     add ebx, eax                  ; Offset = shape + rotation
@@ -609,14 +612,14 @@ check_collision:
     mov ecx, 4
 	collision_loop:
 		; Calculate absolute x coordinate
-		mov ebx, DWORD [ebp+8]        ; Load xpos
+		movzx ebx, byte [xpos]		  ; Load xpos
 		movsx edx, byte [eax]         ; Load x offset of the block
 		add ebx, edx                  ; Absolute x = xpos + x offset
 		inc eax                       ; Move to y offset
 		push ebx                      ; Save x coordinate on stack
 
 		; Calculate absolute y coordinate
-		mov ebx, DWORD [ebp+12]       ; Load ypos
+		movzx ebx, byte [ypos]        ; Load ypos
 		movzx edx, byte [eax]         ; Load y offset of the block
 		sub ebx, edx                  ; Absolute y = ypos - y offset
 		inc eax                       ; Move to the next block
@@ -624,118 +627,90 @@ check_collision:
 
 		; Call collision test
 		call collition_test
-		test eax, eax                 ; Check the result
 		jnz collision_detected        ; If a collision occurred, exit the loop
 
 		add esp, 8                    ; Clean up the stack
 		loop collision_loop           ; Check all blocks
-		jmp no_collision
-
-	collision_detected:
-		mov eax, 1                    ; Collision detected
-		add esp, 8                    ; Clean up the stack
+		;move all positions to saved backup and exit Function
+		mov al, [xpos]
+		mov ah, [ypos]
+		mov bl, [rotation]
+		mov [xpos+1],al
+		mov [ypos+1],ah
+		mov [rotation+1], bl
 		jmp exit_function
 
-	no_collision:
-		mov eax, 0                    ; No collision
+	collision_detected:
+		add esp, 8
+		mov bl, [ypos+1]
+		cmp bl, byte[ypos]
+		jne lock_tetrimino
+		mov bl, [xpos+1]
+		mov bh, [rotation+1]
+		mov [xpos], bl
+		mov [rotation], bh
+		jmp exit_function
+		lock_tetrimino:
+			mov byte[ypos],bl
+			;reset tetromino position
+			sub ecx, 5
+			neg ecx
+			shl ecx, 1
+			sub eax,ecx
+			mov ecx, 4
+			; save the curent termios to the board
+			save_loop:
+				; Calculate absolute x coordinate
+				movzx ebx, byte [xpos] ; Load xpos
+				movsx edx, byte [eax]  ; Load x offset of the block
+				add ebx, edx		   ; Absolute x = xpos + x offset
+				inc eax				   ; Move to y offset
+				push ebx			   ; Save x coordinate on stack
+
+				; Calculate absolute y coordinate
+				movzx ebx, byte [ypos] ; Load ypos
+				movzx edx, byte [eax]  ; Load y offset of the block
+				sub ebx, edx		   ; Absolute y = ypos - y offset
+				inc eax				   ; Move to the next block
+				push ebx			   ; Save y coordinate on stack
+				call write_pos
+				add esp, 8
+				loop save_loop
+			
+			call random
+			mov		byte [xpos], STARTX
+			mov		byte [ypos], STARTY
+			mov		byte [xpos+1], STARTX
+			mov		byte [ypos+1], STARTY
 
 	exit_function:
 		popa                          ; Restore registers
 		leave                         ; Restore stack frame
-		ret       
+		ret      
 collition_test:
 	enter 0,0
 	pusha
-	mov		eax, WIDTH
-	mul		DWORD [ebp+8]
-	add		eax, DWORD [ebp+12]
-	lea		eax, [board + eax]
+	call get_pos
 	cmp		BYTE [eax], AIR_CHAR
 	popa
 	leave
 	ret
 
-auto_drop:
-    pusha
-	call render
-    ; Use the timer to determine if it's time to drop
-    call timer
+	
 
-    ; Check if timer indicates it's time to drop
-    cmp eax, 0               ; Check the flag from timer
-    je auto_drop_exit        ; If not time, exit and wait for next loop
-
-	; Test collision for the next downward position
-    mov eax, DWORD [xpos]    ; Load xpos
-    mov ebx, DWORD [ypos]    ; Load ypos
-	movzx ecx,byte [rotation]; Load rotation
-    dec ebx                  ; Simulate downward movement
-    push ecx				 ; Push rotation
-    push ebx                 ; Push ypos - 1
-    push eax                 ; Push xpos
-    call check_collision     ; Check for collision
-    add esp, 12              ; Clean up the stack
-
-    cmp eax, 1               ; Check if collision occurred
-    jne no_collision_autodrop
-
-    ;coillision occured
-	call lock_tetrimino
-    jmp auto_drop_exit
-
-	no_collision_autodrop:
-		; No collision: move the Tetrimino down
-		dec DWORD [ypos]
-
-		; Debug print ypos 
-		push eax 
-		push ebx 
-		mov eax, DWORD [ypos] 
-		pop ebx 
-		pop eax
-		; Update the game board after moving
-		call render
-		jmp auto_drop_exit
-
-	lock_tetrimino:
-		; Collision occurred: lock the Tetrimino and spawn a new one
-		mov DWORD [xpos], esi    ; Restore xpos
-    	mov DWORD [ypos], edi    ; Restore ypos
-		call disable_auto_drop   ; Disable auto-drop
-		;call spawn_new_tetrimino ; Prepare the next Tetrimino
-		jmp auto_drop_exit
-
-	auto_drop_exit:
-		popa
-		ret
-
-
-	spawn_new_tetrimino:
-		pusha
-
-		; Reset Tetrimino position and state
-		mov DWORD [xpos], STARTX  ; Set starting X position
-		mov DWORD [ypos], STARTY  ; Set starting Y position
-		mov byte [rotation], 0    ; Reset rotation
-
-		; Generate a new random Tetrimino
-		call random               ; Update `next_blocks` with a new random value
-
-		; Re-enable auto-drop for the new Tetrimino
-		call enable_auto_drop
-
-		; Update the game board to show the new Tetrimino
-		call render
-
-		popa
-		ret
-
-	enable_auto_drop:
-		mov byte [auto_drop_enabled], 1  ; Set the auto-drop flag to enabled
-		ret
-
-	disable_auto_drop:
-		mov byte [auto_drop_enabled], 0  ; Set the auto-drop flag to disabled
-		ret
-						; Return
-
+write_pos:
+	enter 0,0
+	pusha
+	call get_pos
+	mov byte [eax], byte PLAYER_CHAR
+	mov byte [eax + 1], byte PLAYER_CHAR2
+	popa
+	leave
+	ret
+	
+get_pos:
+	mov		eax, WIDTH
+	mul		DWORD [ebp+8]
+	add		eax, DWORD [ebp+12]
+	lea		eax, [board + eax]
+	ret
