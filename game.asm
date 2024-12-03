@@ -29,6 +29,7 @@
 
 segment .data
 
+			debug_buffer db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ; Enough space for a string
 	; used to fopen() the board file defined above
 	board_file			db BOARD_FILE,0
 
@@ -96,6 +97,11 @@ segment .bss
 	next_blocks resb 2
 	rotation resb 1
 
+	auto_drop_enabled resb 1  ; Flag to enable or disable auto-drop
+	termios_current resb 32 ; Buffer for current termios settings
+    termios_new resb 32     ; Buffer for modified termios settings
+	 char_buffer resb 1 ; Single byte buffer for input
+
 segment .text
 
 	global	asm_main
@@ -106,10 +112,12 @@ segment .text
 	global 	timer
 	global 	random
 	global 	collition_test
+	global auto_drop
+	global check_collision
 
 	extern	system
 	extern	putchar
-	extern	getchar
+	;extern	getchar
 	extern	printf
 	extern	fopen
 	extern	fread
@@ -146,78 +154,98 @@ asm_main:
 	;	6. if it's a wall, reset xpos,ypos to saved esi,edi
 	;	7. otherwise, just continue! (xpos,ypos are ok)
 	game_loop:
+		; Render the game board
+			call render
 
-		; draw the game board
-		call	render
+			; Perform auto-drop
+			call auto_drop
 
-		; get an action from the user
-		call	getchar
+			; Process player input
+			call process_input
 
-		; store the current position
-		; we will test if the new position is legal
-		; if not, we will restore these
-		mov		esi, DWORD [xpos]
-		mov		edi, DWORD [ypos]
+			; Continue game logic
+			jmp game_loop
+		process_input:
+			; Non-blocking input using read syscall (32-bit)
+			mov eax, 3           ; syscall number for read
+			mov ebx, 0           ; stdin file descriptor
+			lea ecx, [char_buffer] ; Buffer to store input character
+			mov edx, 1           ; Read 1 byte
+			int 0x80             ; Perform syscall
 
-		; choose what to do
-		call timer; see if the block should fall on its own
-		cmp		eax, CLOCKWISECHAR
-		je		rotate_clockwise
-		cmp		eax, COUNTERCLOCKWISECHAR
-		je		rotate_counterclockwise
-		je		game_loop_end
-		cmp		eax, EXITCHAR
-		je		game_loop_end
-		cmp		eax, UPCHAR
-		je 		move_up
-		cmp		eax, LEFTCHAR
-		je		move_left
-		cmp		eax, DOWNCHAR
-		je		move_down
-		cmp		eax, RIGHTCHAR
-		je		move_right
-		jmp		input_end			; or just do nothing
+			; Check if a key was pressed
+			cmp eax, 1           ; Was a character read?
+			jne skip_input       ; If not, skip input handling
 
-		; move the player according to the input character
+			; Load the character from char_buffer into al
+			movzx eax, byte [char_buffer]
+
+			; Store the current position
+			; Save current xpos and ypos for potential restoration
+			mov esi, DWORD [xpos]
+			mov edi, DWORD [ypos]
+
+			; Compare input character and perform actions
+			cmp al, UPCHAR
+			je move_up
+			cmp al, DOWNCHAR
+			je move_down
+			cmp al, CLOCKWISECHAR
+			je rotate_clockwise
+			cmp al, COUNTERCLOCKWISECHAR
+			je rotate_counterclockwise
+			cmp al, EXITCHAR
+			je game_loop_end
+			cmp al, LEFTCHAR
+			je move_left
+			cmp al, RIGHTCHAR
+			je move_right
+			jmp input_end          ; No valid input, skip processing
+
+			; Move the player according to the input character
 		rotate_clockwise:
-			inc		byte [rotation]
-			cmp		byte [rotation], byte 4
-			jne		input_end
-				mov [rotation], byte 0
-			jmp		input_end
+			inc byte [rotation]
+			cmp byte [rotation], 4
+			jne input_end
+			mov byte [rotation], 0
+			jmp input_end
+
 		rotate_counterclockwise:
-			dec 	byte [rotation]
-			cmp		byte [rotation], byte -1
-			jne		input_end
-				mov [rotation], byte 3
-			jmp		input_end
+			dec byte [rotation]
+			cmp byte [rotation], -1
+			jne input_end
+			mov byte [rotation], 3
+			jmp input_end
+
 		move_up:
-			dec		DWORD [ypos]
-			jmp		input_end
+			dec DWORD [ypos]
+			jmp input_end
+
 		move_left:
-			sub		DWORD [xpos],2
-			jmp		input_end
+			sub DWORD [xpos], 2
+			jmp input_end
+
 		move_down:
-			inc		DWORD [ypos]
-			jmp		input_end
+			inc DWORD [ypos]
+			jmp input_end
+
 		move_right:
-			add		DWORD [xpos],2
+			add DWORD [xpos], 2
+
 		input_end:
+			; Calculate new position and test collision
+			movzx ebx, byte [next_blocks]
+			movzx eax, byte [rotation]
+			shl ebx, 5
+			shl eax, 3
+			add ebx, eax
+			mov eax, tetrominoes
+			add eax, ebx
+			inc eax
+			mov ecx, 4
+			dec eax
 
-		; (W * y) + x = pos
-
-		; compare the current position to the wall character
-		movzx ebx, byte [next_blocks]
-		movzx eax, byte [rotation]
-		shl ebx, 5
-		shl eax, 3
-		add ebx, eax
-		mov eax, tetrominoes
-		add eax,ebx
-		inc eax
-		mov ecx, 4
-		dec eax
-		collition_loop:
+		collision_loop_userinput:
 			mov ebx, [xpos]
 			movsx edx, byte [eax]
 			add ebx, edx
@@ -228,19 +256,24 @@ asm_main:
 			sub ebx, edx
 			inc eax
 			push ebx
-			call collition_test	
-			jne		invalid_move
-			add		esp, 8
-				loop collition_loop
-	add		esp, 1
-	jmp		game_loop
-	invalid_move:
-		; opps, that was an invalid move, reset
-		add		esp, 8
-		mov		DWORD [xpos], esi
-		mov		DWORD [ypos], edi
-		jmp		game_loop
-	game_loop_end:
+			call collition_test
+			jne invalid_move
+			add esp, 8
+			loop collision_loop_userinput
+
+			add esp, 1
+			jmp game_loop
+
+		invalid_move:
+			; Oops, that was an invalid move, reset
+			add esp, 8
+			mov DWORD [xpos], esi
+			mov DWORD [ypos], edi
+			jmp game_loop
+
+		skip_input:
+			ret
+		game_loop_end:
 
 	; restore old terminal functionality
 	call raw_mode_off
@@ -251,30 +284,75 @@ asm_main:
 	ret
 
 raw_mode_on:
+    ; Step 1: Get current terminal settings
+    mov eax, 54              ; ioctl syscall number
+    mov ebx, 0               ; stdin file descriptor
+    mov ecx, 0x5401          ; TCGETS (get termios)
+    lea edx, [termios_current] ; Pointer to current termios
+    int 0x80                 ; Perform syscall
 
-	push	ebp
-	mov		ebp, esp
+    ; Step 2: Copy current settings to new settings
+    lea esi, [termios_current]
+    lea edi, [termios_new]
+    mov ecx, 32              ; Size of termios struct
+    rep movsb                ; Copy current termios to new termios
 
-	push	raw_mode_on_cmd
-	call	system
-	add		esp, 4
+    ; Step 3: Modify termios to disable canonical mode and echo
+    lea eax, [termios_new]   ; Load address of termios_new into eax
+    add eax, 12              ; Offset to the c_lflag field
+    mov ebx, [eax]           ; Read the 32-bit c_lflag value
+    and ebx, 0xFFFFFFFE      ; Clear ICANON (bit 0)
+    and ebx, 0xFFFFFFF7      ; Clear ECHO (bit 3)
+    mov [eax], ebx           ; Write back the modified value
 
-	mov		esp, ebp
-	pop		ebp
-	ret
+    ; Step 4: Apply the new settings
+    mov eax, 54              ; ioctl syscall
+    mov ebx, 0               ; stdin file descriptor
+    mov ecx, 0x5402          ; TCSETS (set termios)
+    lea edx, [termios_new]   ; Pointer to modified termios
+    int 0x80                 ; Perform syscall
+
+    ; Step 5: Set stdin to non-blocking mode
+    mov eax, 5               ; fcntl syscall
+    mov ebx, 0               ; stdin file descriptor
+    mov ecx, 3               ; F_GETFL (get file status flags)
+    int 0x80                 ; Perform syscall
+    or eax, 0x800            ; Add O_NONBLOCK
+    mov ecx, 4               ; F_SETFL (set file status flags)
+    int 0x80                 ; Perform syscall
+
+    ret
+	
+	;previous raw_mode_on
+	;push	ebp
+	;mov		ebp, esp
+
+	;push	raw_mode_on_cmd
+	;call	system
+	;add		esp, 4
+
+	;mov		esp, ebp
+	;pop		ebp
+	;ret
 
 raw_mode_off:
 
-	push	ebp
-	mov		ebp, esp
+	mov eax, 54          ; ioctl syscall
+    mov edi, 0           ; stdin file descriptor
+    mov esi, 0x5402      ; TCSETS (set termios)
+    lea edx, [termios_current]
+    syscall
+    ret
+	;previous raw_mode_on
+	;push	ebp
+	;mov		ebp, esp
 
-	push	raw_mode_off_cmd
-	call	system
-	add		esp, 4
+	;push	raw_mode_off_cmd
+	;add		esp, 4
 
-	mov		esp, ebp
-	pop		ebp
-	ret
+	;mov		esp, ebp
+	;pop		ebp
+	;ret
 
 init_board:
 
@@ -435,29 +513,34 @@ render:
 	ret
 
 timer:
-	pusha
+    pusha
 
-	rdtsc; get clock cycles
-	mov edx, eax; save cycles to edx
-	mov ebx, [time]; get pervious cycles
-	sub eax, ebx; get dela time
-	mov ecx, eax
-	
-	movzx eax, byte [level]
-	mov ebx, 013333333h
-	mul ebx
-	mov ebx, 0CCCCCCCCh
-	sub ebx,eax
-	mov eax, ebx
+    rdtsc                    ; Get current clock cycles
+    mov edx, eax             ; Save current cycles in edx
+    mov ebx, [time]          ; Load previously saved cycles
+    sub eax, ebx             ; Calculate elapsed cycles
+    mov ecx, eax             ; Store elapsed cycles in ecx
 
-	cmp ecx,ebx
-	jb time_not_up
-		rdtsc; get clock cycles
-		mov [time], eax;save clock cycles
-		inc DWORD [ypos]
-	time_not_up:
-	popa
-	ret
+    movzx eax, byte [level]  ; Load the current level
+    mov ebx, 1A5E3544h       ; Base interval (5 seconds in clock cycles)
+    mul ebx                  ; Multiply base interval by level
+    mov ebx, 0CCCCCCCCh      ; Maximum interval
+    sub ebx, eax             ; Calculate the drop interval
+
+    cmp ecx, ebx             ; Compare elapsed time with interval
+    jb time_not_up           ; If not enough time has passed, exit
+
+    ; Enough time has passed: update timer and indicate drop
+    rdtsc                    ; Get current clock cycles
+    mov [time], eax          ; Save the current cycles
+    mov eax, 1               ; Set flag indicating it's time to drop
+    popa
+    ret
+
+time_not_up:
+    mov eax, 0               ; Set flag indicating not time to drop
+    popa
+    ret
 
 random:
 	pusha
@@ -503,7 +586,68 @@ random:
 	
 	popa
 	ret
+check_collision:
+    ; Function to check if the Tetrimino collides with the board or blocks
+    ; Parameters:
+    ;   [ebp+8] -> xpos
+    ;   [ebp+12] -> ypos
+    ;   [ebp+16] -> rotation
 
+    enter 0, 0                  ; Set up stack frame
+    pusha                       ; Save registers
+
+    ; Calculate the starting position in the Tetrimino data
+    movzx ebx, byte [next_blocks] ; Load Tetrimino shape index
+    mov eax, DWORD [ebp+16]       ; Load rotation directly
+    shl ebx, 5                    ; Shape index * 32
+    shl eax, 3                    ; Rotation index * 8
+    add ebx, eax                  ; Offset = shape + rotation
+    mov eax, tetrominoes          ; Base address of Tetrimino data
+    add eax, ebx                  ; Adjusted to current Tetrimino position
+    inc eax                       ; Move to the first coordinate
+
+    ; Prepare loop for all 4 blocks in the Tetrimino
+    mov ecx, 4
+    dec eax                       ; Adjust pointer for the loop
+	collision_loop:
+		; Calculate absolute x coordinate
+		mov ebx, DWORD [ebp+8]        ; Load xpos
+		movsx edx, byte [eax]         ; Load x offset of the block
+		add ebx, edx                  ; Absolute x = xpos + x offset
+		inc eax                       ; Move to y offset
+		push ebx                      ; Save x coordinate on stack
+
+		; Calculate absolute y coordinate
+		mov ebx, DWORD [ebp+12]       ; Load ypos
+		movzx edx, byte [eax]         ; Load y offset of the block
+		sub ebx, edx                  ; Absolute y = ypos - y offset
+		inc eax                       ; Move to the next block
+		push ebx                      ; Save y coordinate on stack
+
+		; Call collision test
+		call collition_test
+		test eax, eax                 ; Check the result
+		jnz collision_detected        ; If a collision occurred, exit the loop
+
+		add esp, 8                    ; Clean up the stack
+		loop collision_loop           ; Check all blocks
+		jmp no_collision
+
+	collision_detected:
+		mov eax, 1                    ; Collision detected
+		 jmp cleanup                   ; Jump to cleanup section
+
+	cleanup:
+		add esp, 8                    ; Clean up the stack
+		jmp exit_function
+
+	no_collision:
+		mov eax, 0                    ; No collision
+
+	exit_function:
+		popa                          ; Restore registers
+		leave                         ; Restore stack frame
+		ret       
 collition_test:
 	enter 0,0
 	pusha
@@ -515,3 +659,87 @@ collition_test:
 	popa
 	leave
 	ret
+
+auto_drop:
+    pusha
+	call render
+    ; Use the timer to determine if it's time to drop
+    call timer
+
+    ; Check if timer indicates it's time to drop
+    cmp eax, 0               ; Check the flag from timer
+    je auto_drop_exit        ; If not time, exit and wait for next loop
+
+	; Test collision for the next downward position
+    mov eax, DWORD [xpos]    ; Load xpos
+    mov ebx, DWORD [ypos]    ; Load ypos
+    dec ebx                  ; Simulate downward movement
+    push DWORD [rotation]    ; Push rotation
+    push ebx                 ; Push ypos - 1
+    push eax                 ; Push xpos
+    call check_collision     ; Check for collision
+    add esp, 12              ; Clean up the stack
+
+    cmp eax, 1               ; Check if collision occurred
+    jne no_collision_autodrop
+
+    ;coillision occured
+	call lock_tetrimino
+    jmp auto_drop_exit
+
+	no_collision_autodrop:
+		; No collision: move the Tetrimino down
+		dec DWORD [ypos]
+
+		; Debug print ypos 
+		push eax 
+		push ebx 
+		mov eax, DWORD [ypos] 
+		pop ebx 
+		pop eax
+		; Update the game board after moving
+		call render
+		jmp auto_drop_exit
+
+	lock_tetrimino:
+		; Collision occurred: lock the Tetrimino and spawn a new one
+		mov DWORD [xpos], esi    ; Restore xpos
+    	mov DWORD [ypos], edi    ; Restore ypos
+		call disable_auto_drop   ; Disable auto-drop
+		;call spawn_new_tetrimino ; Prepare the next Tetrimino
+		jmp auto_drop_exit
+
+	auto_drop_exit:
+		popa
+		ret
+
+
+	spawn_new_tetrimino:
+		pusha
+
+		; Reset Tetrimino position and state
+		mov DWORD [xpos], STARTX  ; Set starting X position
+		mov DWORD [ypos], STARTY  ; Set starting Y position
+		mov byte [rotation], 0    ; Reset rotation
+
+		; Generate a new random Tetrimino
+		call random               ; Update `next_blocks` with a new random value
+
+		; Re-enable auto-drop for the new Tetrimino
+		call enable_auto_drop
+
+		; Update the game board to show the new Tetrimino
+		call render
+
+		popa
+		ret
+
+	enable_auto_drop:
+		mov byte [auto_drop_enabled], 1  ; Set the auto-drop flag to enabled
+		ret
+
+	disable_auto_drop:
+		mov byte [auto_drop_enabled], 0  ; Set the auto-drop flag to disabled
+		ret
+						; Return
+
