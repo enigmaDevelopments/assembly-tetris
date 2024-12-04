@@ -25,6 +25,7 @@
 %define RIGHTCHAR 'd'
 %define CLOCKWISECHAR 'e'
 %define COUNTERCLOCKWISECHAR 'q'
+%define HOLDCHAR ' '
 
 
 segment .data
@@ -96,6 +97,7 @@ segment .bss
 	tetris_flag	resb 1
 	used_blocks resb 2
 	next_blocks resb 2
+	held_block 	resb 2
 	rotation resb 2
 
 segment .text
@@ -175,6 +177,8 @@ asm_main:
 			je rotate_clockwise
 			cmp eax, COUNTERCLOCKWISECHAR
 			je rotate_counterclockwise
+			cmp eax, HOLDCHAR
+			je hold
 			cmp eax, EXITCHAR
 			je game_loop_end
 			cmp eax, LEFTCHAR
@@ -197,6 +201,29 @@ asm_main:
 			jne input_end
 			mov byte [rotation], 3
 			jmp input_end
+
+		hold:
+			cmp byte [held_block+1], 1
+			je input_end
+			mov bl, [next_blocks]
+			cmp byte [held_block+1], 2
+			je move_to_hold
+			mov bh, [next_blocks + 1]
+			mov [held_block], bh
+			call random
+			move_to_hold:
+			mov bh, [held_block]
+			mov [next_blocks], bh 
+			mov [held_block], bl
+			mov byte [held_block+1], 1
+
+			mov		byte [xpos], STARTX
+			mov		byte [ypos], STARTY
+			mov		byte [xpos+1], STARTX
+			mov		byte [ypos+1], STARTY
+			mov		word [rotation],0
+			call render
+			jmp game_loop
 
 		move_up:
 			dec byte [ypos]
@@ -579,6 +606,7 @@ check_collision:
 				add esp, 8
 				loop save_loop
 
+			;clear tetrominos that fill a row
 			std
 			mov ebx, WIDTH
 			mov al, AIR_CHAR
@@ -607,6 +635,7 @@ check_collision:
 				jne clear_loop
 			cld
 			
+			;calculate the score to be added
 			xor edx, edx
 			cmp ah, 0
 			je tetris_check
@@ -620,8 +649,7 @@ check_collision:
 						cmp ah,3
 						je clear_check
 							add edx, 300
-							mov al,[tetris_flag]
-							cmp al, 0
+							cmp byte [tetris_flag], 0
 							je clear_check
 								add edx, 400
 				clear_check:
@@ -641,8 +669,7 @@ check_collision:
 							cmp ah,3
 							je tetris_check
 								add edx, 200
-								mov al,[tetris_flag]
-								cmp al, 0
+								cmp byte [tetris_flag], 0
 								je tetris_check
 									add edx, 1200
 
@@ -665,6 +692,11 @@ check_collision:
 			mov		byte [ypos+1], STARTY
 			mov		word [rotation],0
 			call render
+
+			cmp byte [held_block+1] , 0
+			je no_holds
+				mov byte [held_block+1], 2
+			no_holds
 
 	exit_function:
 		popa                          ; Restore registers
