@@ -15,7 +15,7 @@
 ; the player starting position.
 ; top left is considered (0,0)
 %define STARTX 12
-%define STARTY 3
+%define STARTY 0
 
 ; these keys do things
 %define EXITCHAR 'x'
@@ -28,8 +28,6 @@
 
 
 segment .data
-
-			debug_buffer db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ; Enough space for a string
 	; used to fopen() the board file defined above
 	board_file			db BOARD_FILE,0
 
@@ -96,10 +94,6 @@ segment .bss
 	used_blocks resb 2
 	next_blocks resb 2
 	rotation resb 2
-
-	auto_drop_enabled resb 1  ; Flag to enable or disable auto-drop
-	termios_current resb 32 ; Buffer for current termios settings
-    termios_new resb 32     ; Buffer for modified termios settings
 	 char_buffer resb 1 ; Single byte buffer for input
 
 segment .text
@@ -116,10 +110,11 @@ segment .text
 	global check_collision
 	global write_pos
 	global get_pos
+	global get_char
 
 	extern	system
 	extern	putchar
-	;extern	getchar
+	extern	getchar
 	extern	printf
 	extern	fopen
 	extern	fread
@@ -149,6 +144,8 @@ asm_main:
 	call random
 	call random;initialize first blocks
 
+	call render
+
 	; the game happens in this loop
 	; the steps are...
 	;   1. render (draw) the current board
@@ -160,35 +157,13 @@ asm_main:
 	;	7. otherwise, just continue! (xpos,ypos are ok)
 	game_loop:
 		; Render the game board
-			call render
-
 			; Perform auto-drop
 			call timer
 
 			; Process player input
-			call process_input
-
-			; Continue game logic
-			jmp game_loop
-		process_input:
-			; Non-blocking input using read syscall (32-bit)
-			mov eax, 3           ; syscall number for read
-			mov ebx, 0           ; stdin file descriptor
-			lea ecx, [char_buffer] ; Buffer to store input character
-			mov edx, 1           ; Read 1 byte
-			int 0x80             ; Perform syscall
-
-			; Check if a key was pressed
-			cmp eax, 1           ; Was a character read?
-			jne skip_input       ; If not, skip input handling
-
-			; Load the character from char_buffer into al
-			movzx eax, byte [char_buffer]
-
-			; Store the current position
-			; Save current xpos and ypos for potential restoration
-			mov esi, DWORD [xpos]
-			mov edi, DWORD [ypos]
+			call get_char
+			cmp al,0
+			je game_loop
 
 			; Compare input character and perform actions
 			cmp al, UPCHAR
@@ -238,46 +213,8 @@ asm_main:
 			add byte [xpos], 2
 
 		input_end:
-			; Calculate new position and test collision
-			movzx ebx, byte [next_blocks]
-			movzx eax, byte [rotation]
-			shl ebx, 5
-			shl eax, 3
-			add ebx, eax
-			mov eax, tetrominoes
-			add eax, ebx
-			inc eax
-			mov ecx, 4
-			dec eax
-
-		collision_loop_userinput:
-			mov ebx, [xpos]
-			movsx edx, byte [eax]
-			add ebx, edx
-			inc eax
-			push ebx
-			mov ebx, [ypos]
-			movzx edx, byte [eax]
-			sub ebx, edx
-			inc eax
-			push ebx
-			call collition_test
-			jne invalid_move
-			add esp, 8
-			loop collision_loop_userinput
-
-			add esp, 1
-			jmp game_loop
-
-		invalid_move:
-			; Oops, that was an invalid move, reset
-			add esp, 8
-			mov DWORD [xpos], esi
-			mov DWORD [ypos], edi
-			jmp game_loop
-
-		skip_input:
-			ret
+		call check_collision
+		jmp game_loop
 		game_loop_end:
 
 	; restore old terminal functionality
@@ -289,75 +226,54 @@ asm_main:
 	ret
 
 raw_mode_on:
-    ; Step 1: Get current terminal settings
-    mov eax, 54              ; ioctl syscall number
-    mov ebx, 0               ; stdin file descriptor
-    mov ecx, 0x5401          ; TCGETS (get termios)
-    lea edx, [termios_current] ; Pointer to current termios
-    int 0x80                 ; Perform syscall
+	push	ebp
+	mov		ebp, esp
+	pusha
 
-    ; Step 2: Copy current settings to new settings
-    lea esi, [termios_current]
-    lea edi, [termios_new]
-    mov ecx, 32              ; Size of termios struct
-    rep movsb                ; Copy current termios to new termios
-
-    ; Step 3: Modify termios to disable canonical mode and echo
-    lea eax, [termios_new]   ; Load address of termios_new into eax
-    add eax, 12              ; Offset to the c_lflag field
-    mov ebx, [eax]           ; Read the 32-bit c_lflag value
-    and ebx, 0xFFFFFFFE      ; Clear ICANON (bit 0)
-    and ebx, 0xFFFFFFF7      ; Clear ECHO (bit 3)
-    mov [eax], ebx           ; Write back the modified value
-
-    ; Step 4: Apply the new settings
-    mov eax, 54              ; ioctl syscall
-    mov ebx, 0               ; stdin file descriptor
-    mov ecx, 0x5402          ; TCSETS (set termios)
-    lea edx, [termios_new]   ; Pointer to modified termios
-    int 0x80                 ; Perform syscall
-
-    ; Step 5: Set stdin to non-blocking mode
-    mov eax, 5               ; fcntl syscall
-    mov ebx, 0               ; stdin file descriptor
-    mov ecx, 3               ; F_GETFL (get file status flags)
-    int 0x80                 ; Perform syscall
-    or eax, 0x800            ; Add O_NONBLOCK
-    mov ecx, 4               ; F_SETFL (set file status flags)
-    int 0x80                 ; Perform syscall
-
-    ret
+	push	raw_mode_on_cmd
+	call	system
+	add		esp, 4
 	
-	;previous raw_mode_on
-	;push	ebp
-	;mov		ebp, esp
+	mov eax, 0x37			; syscall number for fcntl
+    mov ebx, 0				; file descriptor
+    mov ecx, 4				; F_SETFL command
+    mov edx, 0800h			; O_NONBLOCK flag
+    int 0x80				; invoke syscall
 
-	;push	raw_mode_on_cmd
-	;call	system
-	;add		esp, 4
-
-	;mov		esp, ebp
-	;pop		ebp
-	;ret
+	popa
+	mov		esp, ebp
+	pop		ebp
+	ret
 
 raw_mode_off:
 
-	mov eax, 54          ; ioctl syscall
-    mov edi, 0           ; stdin file descriptor
-    mov esi, 0x5402      ; TCSETS (set termios)
-    lea edx, [termios_current]
-    syscall
-    ret
-	;previous raw_mode_on
-	;push	ebp
-	;mov		ebp, esp
+	push	ebp
+	mov		ebp, esp
 
-	;push	raw_mode_off_cmd
-	;add		esp, 4
+	push	raw_mode_off_cmd
+	call	system
+	add		esp, 4
 
-	;mov		esp, ebp
-	;pop		ebp
-	;ret
+	mov		esp, ebp
+	pop		ebp
+	ret
+
+get_char:
+	push ebx
+	push ecx
+	push edx
+
+	mov eax, 3				; syscall number for sys_read
+    mov ebx, 0				; file descriptor
+    mov ecx, char_buffer	; buffer to store character
+    mov edx, 1				; number of bytes to read
+    int 0x80				; invoke syscall
+	mov al, byte [ecx]
+
+	pop edx
+	pop ecx
+	pop ebx
+	ret
 
 init_board:
 
@@ -638,6 +554,7 @@ check_collision:
 		mov [xpos+1],al
 		mov [ypos+1],ah
 		mov [rotation+1], bl
+		call render
 		jmp exit_function
 
 	collision_detected:
