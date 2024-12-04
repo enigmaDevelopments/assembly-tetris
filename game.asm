@@ -81,6 +81,7 @@ segment .data
 							0,0, 0,1, 0,2, 2,2, \
 							-2,1, 0,1, 2,0, 2,1, \
 							0,0, 2,0, 2,1, 2,2 
+	clear_line			db "<!                    !>"
 segment .bss
 
 	; this array stores the current rendered gameboard (HxW)
@@ -94,7 +95,6 @@ segment .bss
 	used_blocks resb 2
 	next_blocks resb 2
 	rotation resb 2
-	 char_buffer resb 1 ; Single byte buffer for input
 
 segment .text
 
@@ -575,6 +575,32 @@ check_collision:
 				call write_pos
 				add esp, 8
 				loop save_loop
+
+			std
+			mov ebx, WIDTH
+			mov al, AIR_CHAR
+			clear_loop:
+				lea edi, [board + ebx]
+				mov ecx, WIDTH
+				repne scasb
+				jz dont_clear
+					lea esi, [board + ebx - WIDTH]
+					lea edi, [board + ebx]
+					mov ecx , ebx
+					rep movsb
+
+					cld
+					mov esi, clear_line
+					mov edi, board
+					mov ecx, WIDTH
+					rep movsb
+					std
+				
+				dont_clear:
+				add ebx, WIDTH
+				cmp ebx, WIDTH * HEIGHT
+				jne clear_loop
+				 
 			
 			call random
 			mov		byte [xpos], STARTX
