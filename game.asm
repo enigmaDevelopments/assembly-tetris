@@ -110,7 +110,6 @@ segment .text
 	global check_collision
 	global write_pos
 	global get_pos
-	global get_char
 
 	extern	system
 	extern	putchar
@@ -161,24 +160,24 @@ asm_main:
 			call timer
 
 			; Process player input
-			call get_char
-			cmp al,0
+			call getchar
+			cmp eax,-1
 			je game_loop
 
 			; Compare input character and perform actions
-			cmp al, UPCHAR
+			cmp eax, UPCHAR
 			je move_up
-			cmp al, DOWNCHAR
+			cmp eax, DOWNCHAR
 			je move_down
-			cmp al, CLOCKWISECHAR
+			cmp eax, CLOCKWISECHAR
 			je rotate_clockwise
-			cmp al, COUNTERCLOCKWISECHAR
+			cmp eax, COUNTERCLOCKWISECHAR
 			je rotate_counterclockwise
-			cmp al, EXITCHAR
+			cmp eax, EXITCHAR
 			je game_loop_end
-			cmp al, LEFTCHAR
+			cmp eax, LEFTCHAR
 			je move_left
-			cmp al, RIGHTCHAR
+			cmp eax, RIGHTCHAR
 			je move_right
 			jmp input_end          ; No valid input, skip processing
 
@@ -258,22 +257,6 @@ raw_mode_off:
 	pop		ebp
 	ret
 
-get_char:
-	push ebx
-	push ecx
-	push edx
-
-	mov eax, 3				; syscall number for sys_read
-    mov ebx, 0				; file descriptor
-    mov ecx, char_buffer	; buffer to store character
-    mov edx, 1				; number of bytes to read
-    int 0x80				; invoke syscall
-	mov al, byte [ecx]
-
-	pop edx
-	pop ecx
-	pop ebx
-	ret
 
 init_board:
 
@@ -456,7 +439,6 @@ timer:
     	mov [time], eax          ; Save the current cycles
     	inc byte [ypos] 		 ; Move down
     	call check_collision     ; Check for collision
-		call render
 	time_not_up:
     popa
     ret
@@ -599,6 +581,8 @@ check_collision:
 			mov		byte [ypos], STARTY
 			mov		byte [xpos+1], STARTX
 			mov		byte [ypos+1], STARTY
+			mov		word [rotation],0
+			call render
 
 	exit_function:
 		popa                          ; Restore registers
