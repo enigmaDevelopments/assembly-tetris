@@ -92,6 +92,8 @@ segment .bss
 	ypos	resb	2
 	time 	resd	1
 	level	resb	1
+	score	resd    1
+	tetris_flag	resb 1
 	used_blocks resb 2
 	next_blocks resb 2
 	rotation resb 2
@@ -206,6 +208,7 @@ asm_main:
 
 		move_down:
 			inc byte [ypos]
+			inc dword [score]
 			jmp input_end
 
 		move_right:
@@ -579,11 +582,13 @@ check_collision:
 			std
 			mov ebx, WIDTH
 			mov al, AIR_CHAR
+			xor ah, ah
 			clear_loop:
 				lea edi, [board + ebx]
 				mov ecx, WIDTH
 				repne scasb
 				jz dont_clear
+				inc ah
 					lea esi, [board + ebx - WIDTH]
 					lea edi, [board + ebx]
 					mov ecx , ebx
@@ -600,8 +605,59 @@ check_collision:
 				add ebx, WIDTH
 				cmp ebx, WIDTH * HEIGHT
 				jne clear_loop
-				 
+			cld
 			
+			xor edx, edx
+			cmp ah, 0
+			je tetris_check
+				mov edx,100
+				cmp ah,1
+				je clear_check
+					add edx, 200
+					cmp ah,2
+					je clear_check
+						add edx, 200
+						cmp ah,3
+						je clear_check
+							add edx, 300
+							mov al,[tetris_flag]
+							cmp al, 0
+							je clear_check
+								add edx, 400
+				clear_check:
+
+				mov al, PLAYER_CHAR
+				mov edi, board
+				mov ecx, WIDTH * HEIGHT
+				repne scasb
+				jz tetris_check
+					add edx, 800
+					cmp ah,1
+					je tetris_check
+						add edx, 400
+						cmp ah,2
+						je tetris_check
+							add edx, 400
+							cmp ah,3
+							je tetris_check
+								add edx, 200
+								mov al,[tetris_flag]
+								cmp al, 0
+								je tetris_check
+									add edx, 1200
+
+			tetris_check:
+			cmp ah,4
+			je tetris
+				mov byte [tetris_flag], 0
+				jmp	point_tally
+			tetris:
+				mov byte [tetris_flag], 1
+			point_tally:
+			movzx eax, byte [level] 
+			mul edx
+			add dword [score], eax
+
 			call random
 			mov		byte [xpos], STARTX
 			mov		byte [ypos], STARTY
