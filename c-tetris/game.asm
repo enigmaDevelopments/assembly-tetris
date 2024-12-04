@@ -1,5 +1,5 @@
 ;%include "/usr/local/share/csc314/asm_io.inc"
-%include "/mnt/c/Users/granite/Documents/AssemblyLanguage/gameBasecopy/game/asm_io.inc"
+%include "asm_io.inc"
 ; the file that stores the initial state
 %define BOARD_FILE 'board.txt'
 
