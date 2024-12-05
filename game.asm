@@ -520,6 +520,9 @@ random:
 check_collision:
     pusha                       ; Save registers
 
+	mov esi, 0
+	mov edi, 0
+	begin_loop:
     ; Calculate the starting position in the Tetrimino data
     movzx ebx, byte [next_blocks] ; Load Tetrimino shape index
     movzx eax, byte [rotation]    ; Load rotation directly
@@ -570,13 +573,44 @@ check_collision:
 	collision_detected:
 		add esp, 8
 		mov bl, [ypos+1]
+		
 		cmp bl, byte[ypos]
 		jne lock_tetrimino
+		mov bl, [rotation+1]
+		cmp bl, byte [rotation]
+		jne adjust_rotation
 		mov bl, [xpos+1]
-		mov bh, [rotation+1]
 		mov [xpos], bl
-		mov [rotation], bh
 		jmp exit_function
+
+		adjust_rotation:
+			movzx ebx, byte [eax-2]
+			cmp bl, 0
+			jl left
+			mov bl, -2
+			jmp right
+			left:
+			mov bl, 2 
+			right:		
+			
+			cmp edi, 2
+			je rotation_fail
+			cmp esi, 0
+			je shift_postion
+			cmp esi, ebx
+			je shift_postion
+			rotation_fail:
+				mov bl, [rotation+1]
+				mov bh, [xpos+1]
+				mov [rotation], bl
+				mov [xpos], bh
+				jmp exit_function
+			shift_postion:
+			mov esi, ebx
+			inc edi
+			add [xpos], bl
+			jmp begin_loop
+
 		lock_tetrimino:
 			mov byte[ypos],bl
 			;reset tetromino position
