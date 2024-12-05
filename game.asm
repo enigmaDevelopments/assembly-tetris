@@ -518,13 +518,6 @@ random:
 	popa
 	ret
 check_collision:
-    ; Function to check if the Tetrimino collides with the board or blocks
-    ; Parameters:
-    ;   [ebp+8] -> xpos
-    ;   [ebp+12] -> ypos
-    ;   [ebp+16] -> rotation
-
-    enter 0, 0                  ; Set up stack frame
     pusha                       ; Save registers
 
     ; Calculate the starting position in the Tetrimino data
@@ -553,12 +546,17 @@ check_collision:
 		inc eax                       ; Move to the next block
 		push ebx                      ; Save y coordinate on stack
 
+		cmp ebx, 0
+		jl negtive
+
 		; Call collision test
 		call collition_test
 		jnz collision_detected        ; If a collision occurred, exit the loop
 
+		negtive:
 		add esp, 8                    ; Clean up the stack
 		loop collision_loop           ; Check all blocks
+
 		;move all positions to saved backup and exit Function
 		mov al, [xpos]
 		mov ah, [ypos]
@@ -602,7 +600,10 @@ check_collision:
 				sub ebx, edx		   ; Absolute y = ypos - y offset
 				inc eax				   ; Move to the next block
 				push ebx			   ; Save y coordinate on stack
+				cmp ebx, 0
+				jl neg
 				call write_pos
+				neg:
 				add esp, 8
 				loop save_loop
 
@@ -696,11 +697,10 @@ check_collision:
 			cmp byte [held_block+1] , 0
 			je no_holds
 				mov byte [held_block+1], 2
-			no_holds
+			no_holds:
 
 	exit_function:
 		popa                          ; Restore registers
-		leave                         ; Restore stack frame
 		ret      
 collition_test:
 	enter 0,0
