@@ -520,7 +520,6 @@ random:
 check_collision:
     pusha                       ; Save registers
 
-	mov esi, 0
 	mov edi, 0
 	begin_loop:
     ; Calculate the starting position in the Tetrimino data
@@ -584,32 +583,22 @@ check_collision:
 		jmp exit_function
 
 		adjust_rotation:
-			movzx ebx, byte [eax-2]
-			cmp bl, 0
-			jl left
-			mov bl, -2
-			jmp right
-			left:
-			mov bl, 2 
-			right:		
+			mov bl, [eax-2]
+			shr bl,7
+			shl bl,2
+			sub bl,2
 			
 			cmp edi, 2
 			je rotation_fail
-			cmp esi, 0
-			je shift_postion
-			cmp esi, ebx
-			je shift_postion
+				inc edi
+				add [xpos], bl
+				jmp begin_loop
 			rotation_fail:
-				mov bl, [rotation+1]
-				mov bh, [xpos+1]
-				mov [rotation], bl
-				mov [xpos], bh
-				jmp exit_function
-			shift_postion:
-			mov esi, ebx
-			inc edi
-			add [xpos], bl
-			jmp begin_loop
+			mov bl, [rotation+1]
+			mov bh, [xpos+1]
+			mov [rotation], bl
+			mov [xpos], bh
+			jmp exit_function
 
 		lock_tetrimino:
 			mov byte[ypos],bl
