@@ -170,7 +170,7 @@ asm_main:
 
 			; Compare input character and perform actions
 			cmp eax, UPCHAR
-			je move_up
+			je hard_drop
 			cmp eax, DOWNCHAR
 			je move_down
 			cmp eax, CLOCKWISECHAR
@@ -225,9 +225,13 @@ asm_main:
 			call render
 			jmp game_loop
 
-		move_up:
-			dec byte [ypos]
-			jmp input_end
+		hard_drop:
+			inc byte [ypos]
+			add dword [score], 2
+			call check_collision
+			cmp byte [ypos], 0
+			jne hard_drop
+			jmp game_loop
 
 		move_left:
 			sub byte [xpos], 2
