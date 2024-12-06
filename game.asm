@@ -83,6 +83,10 @@ segment .data
 							-2,1, 0,1, 2,0, 2,1, \
 							0,0, 2,0, 2,1, 2,2 
 	clear_line			db "<!                    !>"
+	score_label db" Score: %d", 0
+    level_label db " Level: %d", 0
+    next_blocks_label db " Next Block ", 0
+	held_blocks_label db " Held Block ", 0
 segment .bss
 
 	; this array stores the current rendered gameboard (HxW)
@@ -99,6 +103,7 @@ segment .bss
 	next_blocks resb 2
 	held_block 	resb 2
 	rotation resb 2
+	print_score_keeper resb 1  
 
 segment .text
 
@@ -431,6 +436,63 @@ render:
 		inc		DWORD [ebp - 8]
 		jmp		x_loop_start
 		x_loop_end:
+
+		;load global print_score_keeper state
+		    mov eax, DWORD [print_score_keeper]
+
+			; Print Score on the first row
+			cmp     eax, 0        ;if print_score_keeper is 0
+			jne     gotto_level  ; Only print score on the first row
+			cmp     DWORD [ebp - 4], 0  ;only print on the second row 
+			jne     gotto_level  ; Only print score on the first row
+			push DWORD [score]
+			push    score_label
+			call    printf
+			add     esp, 8
+			
+			gotto_level:
+			mov ebx, DWORD [level]  ; Backup level
+			; Print Level on the second row
+			mov eax, DWORD [print_score_keeper]
+			cmp     eax, 0 ;compare to print_score_keeper and if its one print level
+			jne     gotto_nextblock  ; Only print level on the second row
+			cmp     DWORD [ebp - 4], 1  ;only print on the second row 
+			jne     gotto_nextblock  ; Only print level on the second row
+			push DWORD [level]
+		    push    level_label
+			call    printf
+		    add     esp, 8
+			mov DWORD [level], ebx  ; Restore level
+
+			gotto_nextblock:
+			; Print Next Block on the third row
+			cmp     eax, 0 ;compare to print_score_keeper and if its 2 print level
+			jne     gotto_heldblock  ; Only print next block on the third row
+			cmp     DWORD [ebp - 4], 3
+			jne     gotto_heldblock  ; Only print next block on the third row
+			push    next_blocks_label
+			call    printf
+			add     esp, 4
+
+			;print next_blocks+1
+			;cmp   DWORD [ebp -4],4
+			;push DWORD [next_blocks + 1]
+			;call printf
+			;add esp, 4
+
+
+			gotto_heldblock:
+			; Print Next Block on the third row
+			cmp     eax, 0 ;compare to print_score_keeper and if its 2 print level
+			jne     skip_next  ; Only print next block on the third row
+			cmp     DWORD [ebp - 4], 8
+			jne     skip_next  ; Only print next block on the third row
+			push    held_blocks_label
+			call    printf
+			add     esp, 4
+			
+
+		skip_next:
 
 		; write a carriage return (necessary when in raw mode)
 		push	0x0d
