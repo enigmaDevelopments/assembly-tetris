@@ -87,6 +87,8 @@ segment .data
     level_label db " Level: %d", 0
     next_blocks_label db " Next Block ", 0
 	held_blocks_label db " Held Block ", 0
+	game_over_label db " Game Over. ", 0
+
 segment .bss
 
 	; this array stores the current rendered gameboard (HxW)
@@ -144,7 +146,7 @@ asm_main:
 	mov		byte [ypos], STARTY
 	mov		byte [xpos+1], STARTX
 	mov		byte [ypos+1], STARTY
-	
+
 	rdtsc
 	mov [time], eax; set initial time
 	mov [level], byte 1; set level to 1
@@ -253,9 +255,17 @@ asm_main:
 		input_end:
 		call check_collision
 		jmp game_loop
-		game_loop_end:
 
-	; restore old terminal functionality
+		game_over_end:
+		mov eax, game_over_label
+		call print_string
+		call print_nl
+		mov eax, 0dH
+		call print_char
+		jmp game_loop_end
+
+		game_loop_end:
+	;restore old terminal functionality
 	call raw_mode_off
 
 	mov		eax, 0
@@ -690,7 +700,8 @@ check_collision:
 				inc eax				   ; Move to the next block
 				push ebx			   ; Save y coordinate on stack
 				cmp ebx, 0
-				jl neg
+				jle game_over_end
+				;jl neg
 				call write_pos
 				neg:
 				add esp, 8
@@ -790,7 +801,8 @@ check_collision:
 
 	exit_function:
 		popa                          ; Restore registers
-		ret      
+		ret
+
 collition_test:
 	enter 0,0
 	pusha
