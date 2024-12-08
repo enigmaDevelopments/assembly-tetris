@@ -105,7 +105,6 @@ segment .bss
 	next_blocks resb 2
 	held_block 	resb 2
 	rotation resb 2
-	print_score_keeper resb 1  
 
 segment .text
 
@@ -369,7 +368,7 @@ render:
 	; two ints, for two loop counters
 	; ebp-4, ebp-8
 	; plus 8 bytes, for storing player positions
-	sub		esp, 16
+	sub		esp, 32
 
 	;save player positions
 	mov eax, tetrominoes
@@ -382,6 +381,28 @@ render:
 	mov [ebp - 16], ecx
 	mov ecx, dword [eax + ebx + 4]
 	mov [ebp - 12], ecx
+
+	;save hold block positions
+	cmp byte[held_block + 1], 0
+	je no_held_block
+	mov eax, tetrominoes
+	movzx ebx, byte [held_block]
+	shl ebx, 5
+	mov ecx, dword [eax + ebx]
+	mov [ebp - 24], ecx
+	mov ecx, dword [eax + ebx + 4]
+	mov [ebp - 20], ecx
+	no_held_block:
+
+	;save next block positions
+	mov eax, tetrominoes
+	movzx ebx, byte [next_blocks+1]
+	shl ebx, 5
+	mov ecx, dword [eax + ebx]
+	mov [ebp - 32], ecx
+	mov ecx, dword [eax + ebx + 4]
+	mov [ebp - 28], ecx
+
 	; clear the screen
 	push	clear_screen_code
 	call	printf
@@ -447,12 +468,8 @@ render:
 		jmp		x_loop_start
 		x_loop_end:
 
-		;load global print_score_keeper state
-		    mov eax, DWORD [print_score_keeper]
 
 			; Print Score on the first row
-			cmp     eax, 0        ;if print_score_keeper is 0
-			jne     gotto_level  ; Only print score on the first row
 			cmp     DWORD [ebp - 4], 0  ;only print on the second row 
 			jne     gotto_level  ; Only print score on the first row
 			push DWORD [score]
@@ -461,13 +478,9 @@ render:
 			add     esp, 8
 			
 			gotto_level:
-			movzx ebx, byte [level]  ; Backup level
-			; Print Level on the second row
-			mov eax, DWORD [print_score_keeper]
-			cmp     eax, 0 ;compare to print_score_keeper and if its one print level
-			jne     gotto_nextblock  ; Only print level on the second row
 			cmp     DWORD [ebp - 4], 1  ;only print on the second row 
 			jne     gotto_nextblock  ; Only print level on the second row
+			movzx ebx, byte[level]
 			push ebx
 		    push    level_label
 			call    printf
@@ -475,30 +488,70 @@ render:
 
 			gotto_nextblock:
 			; Print Next Block on the third row
-			cmp     eax, 0 ;compare to print_score_keeper and if its 2 print level
-			jne     gotto_heldblock  ; Only print next block on the third row
 			cmp     DWORD [ebp - 4], 3
 			jne     gotto_heldblock  ; Only print next block on the third row
 			push    next_blocks_label
 			call    printf
 			add     esp, 4
 
-			;print next_blocks+1
-			;cmp   DWORD [ebp -4],4
-			;push DWORD [next_blocks + 1]
-			;call printf
-			;add esp, 4
-
-
 			gotto_heldblock:
 			; Print Next Block on the third row
-			cmp     eax, 0 ;compare to print_score_keeper and if its 2 print level
-			jne     skip_next  ; Only print next block on the third row
-			cmp     DWORD [ebp - 4], 8
-			jne     skip_next  ; Only print next block on the third row
+			cmp     DWORD [ebp - 4], 7
+			jne     gotto_block_icon  ; Only print next block on the third row
 			push    held_blocks_label
 			call    printf
 			add     esp, 4
+
+			gotto_block_icon:
+			mov al, -2
+			mov edx, -32
+			cmp     DWORD [ebp - 4], 4
+			je     print_icon
+			cmp     DWORD [ebp - 4], 5
+			je     print_icon
+			add edx, 8
+			cmp byte[held_block + 1], 0
+			je skip_next
+			cmp     DWORD [ebp - 4], 8
+			je     print_icon
+			cmp     DWORD [ebp - 4], 9
+			je     print_icon
+			jmp skip_next
+
+
+			print_icon:
+			pusha
+			mov ecx,edx
+				inner_icon_loop:
+				mov ah, byte [ebp - 4]
+				xor ah, byte [ebp + ecx + 1]
+				test ah, 1
+				jz inner_end
+				cmp al, byte [ebp + ecx]
+				je print_charecter
+				inner_end:
+					add ecx, 2
+					test ecx, 7
+					jnz inner_icon_loop
+
+				push AIR_CHAR
+				call	putchar
+				call	putchar
+				add		esp, 4
+				jmp icon_loop_check
+				
+				print_charecter:
+					push	PLAYER_CHAR
+					call	putchar
+					push	PLAYER_CHAR2
+					call	putchar
+					add		esp, 8
+			icon_loop_check:
+				popa
+				add al, 2
+				cmp al, 6
+				jne print_icon
+
 			
 
 		skip_next:
