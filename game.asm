@@ -104,7 +104,8 @@ segment .bss
 	used_blocks resb 2
 	next_blocks resb 2
 	held_block 	resb 2
-	rotation resb 2
+	rotation 	resb 2
+	rows_cleared resb 1
 
 segment .text
 
@@ -196,16 +197,12 @@ asm_main:
 			; Move the player according to the input character
 		rotate_clockwise:
 			inc byte [rotation]
-			cmp byte [rotation], 4
-			jne input_end
-			mov byte [rotation], 0
+			and byte [rotation], 3
 			jmp input_end
 
 		rotate_counterclockwise:
 			dec byte [rotation]
-			cmp byte [rotation], -1
-			jne input_end
-			mov byte [rotation], 3
+			and byte [rotation], 3
 			jmp input_end
 
 		hold:
@@ -834,9 +831,16 @@ check_collision:
 			tetris:
 				mov byte [tetris_flag], 1
 			point_tally:
+			add byte [rows_cleared], ah
 			movzx eax, byte [level] 
 			mul edx
 			add dword [score], eax
+			cmp byte [rows_cleared], 10
+			jl same_level
+				inc byte [level]
+				sub byte [rows_cleared], 10
+			same_level:
+
 
 			call random
 			mov		byte [xpos], STARTX
