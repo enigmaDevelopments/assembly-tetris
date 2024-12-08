@@ -461,18 +461,17 @@ render:
 			add     esp, 8
 			
 			gotto_level:
-			mov ebx, DWORD [level]  ; Backup level
+			movzx ebx, byte [level]  ; Backup level
 			; Print Level on the second row
 			mov eax, DWORD [print_score_keeper]
 			cmp     eax, 0 ;compare to print_score_keeper and if its one print level
 			jne     gotto_nextblock  ; Only print level on the second row
 			cmp     DWORD [ebp - 4], 1  ;only print on the second row 
 			jne     gotto_nextblock  ; Only print level on the second row
-			push DWORD [level]
+			push ebx
 		    push    level_label
 			call    printf
 		    add     esp, 8
-			mov DWORD [level], ebx  ; Restore level
 
 			gotto_nextblock:
 			; Print Next Block on the third row
