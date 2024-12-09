@@ -2,6 +2,8 @@
 %include "asm_io.inc"
 ; the file that stores the initial state
 %define BOARD_FILE 'board.txt'
+;the file that stores the highscore file
+%define HIGHSCORE_FILE 'highscore.txt'
 
 ; how to represent everything
 %define AIR_CHAR ' '
@@ -32,6 +34,9 @@ segment .data
 	; used to fopen() the board file defined above
 	board_file			db BOARD_FILE,0
 
+	; used to fopen the highscore file defined above
+	highscore_file 		db HIGHSCORE_FILE,0
+
 	; used to change the terminal mode
 	mode_r				db "r",0
 	raw_mode_on_cmd		db "stty raw -echo",0
@@ -42,12 +47,13 @@ segment .data
 
 	; things the program will print
 	help_str			db 13,10,"Controls: ", \
+							UPCHAR,"=FAST-DROP / ", \
 							LEFTCHAR,"=LEFT / ", \
+							DOWNCHAR,"=DOWN / ", \
 							RIGHTCHAR,"=RIGHT / ", \
-							UPCHAR,"=HARD DROP /",13,10, \
-							DOWNCHAR,"=SOFT DROP / ", \
-							COUNTERCLOCKWISECHAR,"/",CLOCKWISECHAR,"=ROTATE / ", \
-							"space=HOLD / ",\
+							CLOCKWISECHAR,"=ROTATE CW / ",  \
+							COUNTERCLOCKWISECHAR,"=ROTATE COUNTER-CW / ", \
+							"space=HOLD / ", \
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
 	tetrominoes         db -2,0, 0,0, 2,0, 4,0, \
@@ -86,6 +92,7 @@ segment .data
 							0,0, 2,0, 2,1, 2,2 
 	clear_line			db "<!                    !>"
 	score_label db" Score: %d", 0
+	highscore_label db "        High Score: %d", 0
     level_label db " Level: %d", 0
     next_blocks_label db " Next Block ", 0
 	held_blocks_label db " Held Block ", 0
@@ -102,12 +109,15 @@ segment .bss
 	time 	resd	1
 	level	resb	1
 	score	resd    1
+	highscore resd 1
 	tetris_flag	resb 1
 	used_blocks resb 2
 	next_blocks resb 2
 	held_block 	resb 2
 	rotation 	resb 2
 	rows_cleared resb 1
+	fd_in 	resb 1
+	fd_out	resb 1
 
 segment .text
 
@@ -132,6 +142,7 @@ segment .text
 	extern	fread
 	extern	fgetc
 	extern	fclose
+	extern  atoi
 
 asm_main:
 	push	ebp
@@ -142,6 +153,27 @@ asm_main:
 
 	; read the game board file into the global variable
 	call	init_board
+
+	;open the highscore.txt file for reading
+	mov eax, 5
+	mov ebx, highscore_file
+	mov ecx, 0
+	mov edx, 0777
+	int 0x80
+	mov [fd_in], eax
+
+	;read highscore from file (read in as binary which gets used to 
+		;								populate the highscore variable with an int)
+	mov eax, 3
+	mov ebx, [fd_in]
+	mov ecx, highscore
+	mov edx, 8
+	int 0x80
+	
+	;close highscore.txt
+	mov eax, 6
+	mov ebx, [fd_in]
+	int 0x80
 
 	; set the player at the proper start position
 	mov		byte [xpos], STARTX
@@ -263,6 +295,21 @@ asm_main:
 		jmp game_loop_end
 
 		game_loop_end:
+	;write the player's high score out to the highscore.txt save file
+	mov eax, 5
+	mov ebx, highscore_file
+	mov ecx, 1
+	mov edx, 0777
+	int 0x80
+	mov [fd_out], eax
+	mov edx, 4
+	mov ecx, highscore
+	mov ebx, [fd_out]
+	mov eax, 4
+	int 0x80
+	mov eax, 6
+	mov ebx, [fd_out]
+
 	;restore old terminal functionality
 	call raw_mode_off
 
@@ -474,6 +521,21 @@ render:
 			push DWORD [score]
 			push    score_label
 			call    printf
+			
+			;Update the highscore if needed
+			push eax
+			mov eax, [score]	
+			cmp eax, DWORD [highscore]
+			jle highscore_display
+			mov DWORD [highscore], eax
+			pop eax
+
+			;display the highscore on screen
+			highscore_display:
+			push DWORD [highscore]
+			push highscore_label
+			call printf
+			
 			add     esp, 8
 			
 			gotto_level:
