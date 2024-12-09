@@ -42,10 +42,12 @@ segment .data
 
 	; things the program will print
 	help_str			db 13,10,"Controls: ", \
-							UPCHAR,"=UP / ", \
 							LEFTCHAR,"=LEFT / ", \
-							DOWNCHAR,"=DOWN / ", \
 							RIGHTCHAR,"=RIGHT / ", \
+							UPCHAR,"=HARD DROP /",13,10, \
+							DOWNCHAR,"=SOFT DROP / ", \
+							COUNTERCLOCKWISECHAR,"/",CLOCKWISECHAR,"=ROTATE / ", \
+							"space=HOLD / ",\
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
 	tetrominoes         db -2,0, 0,0, 2,0, 4,0, \
