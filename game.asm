@@ -819,7 +819,7 @@ check_collision:
 				inc eax				   ; Move to the next block
 				push ebx			   ; Save y coordinate on stack
 				cmp ebx, 0
-				jle game_over_end
+				jl game_over_end
 				;jl neg
 				call write_pos
 				neg:
