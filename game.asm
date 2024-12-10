@@ -579,9 +579,9 @@ render:
 			add edx, 8
 			cmp byte[held_block + 1], 0
 			je skip_next
-			cmp     DWORD [ebp - 4], 7
+			cmp     DWORD [ebp - 4], 9
 			je     print_icon
-			cmp     DWORD [ebp - 4], 8
+			cmp     DWORD [ebp - 4], 10
 			je     print_icon
 			jmp skip_next
 
