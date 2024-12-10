@@ -47,13 +47,12 @@ segment .data
 
 	; things the program will print
 	help_str			db 13,10,"Controls: ", \
-							UPCHAR,"=FAST-DROP / ", \
 							LEFTCHAR,"=LEFT / ", \
-							DOWNCHAR,"=DOWN / ", \
 							RIGHTCHAR,"=RIGHT / ", \
-							CLOCKWISECHAR,"=ROTATE CW / ",  \
-							COUNTERCLOCKWISECHAR,"=ROTATE COUNTER-CW / ", \
-							"space=HOLD / ", \
+							UPCHAR,"=HARD DROP /",13,10, \
+							DOWNCHAR,"=SOFT DROP / ", \
+							COUNTERCLOCKWISECHAR,"-",CLOCKWISECHAR,"=ROTATE / ", \
+							"space=HOLD / ",\
 							EXITCHAR,"=EXIT", \
 							13,10,10,0
 	tetrominoes         db -2,0, 0,0, 2,0, 4,0, \
@@ -91,12 +90,12 @@ segment .data
 							-2,1, 0,1, 2,0, 2,1, \
 							0,0, 2,0, 2,1, 2,2 
 	clear_line			db "<!                    !>"
-	score_label db" Score: %d", 0
-	highscore_label db "        High Score: %d", 0
-    level_label db " Level: %d", 0
-    next_blocks_label db " Next Block ", 0
-	held_blocks_label db " Held Block ", 0
-	game_over_label db " Game Over. ", 0
+	score_label db"Score: %d", 0
+	highscore_label db "High Score: %d", 0
+    level_label db "Level: %d", 0
+    next_blocks_label db "Next Block ", 0
+	held_blocks_label db "Held Block ", 0
+	game_over_label db "Game Over. ", 0
 
 segment .bss
 
@@ -513,17 +512,25 @@ render:
 		inc		DWORD [ebp - 8]
 		jmp		x_loop_start
 		x_loop_end:
+			push AIR_CHAR
+			call	putchar
+			add		esp, 4
 
-
-			; Print Score on the first row
 			cmp     DWORD [ebp - 4], 0  ;only print on the second row 
-			jne     gotto_level  ; Only print score on the first row
+			jne    goto_high_score  ; Only print score on the first row
 			push DWORD [score]
 			push    score_label
 			call    printf
+			add     esp, 8
 			
-			;Update the highscore if needed
+
+			goto_high_score:
+			; Print Score on the first row
+			cmp     DWORD [ebp - 4], 1  ;only print on the second row 
+			jne     gotto_level  ; Only print highscore on the second row
+
 			push eax
+			;Update the highscore if needed
 			mov eax, [score]	
 			cmp eax, DWORD [highscore]
 			jle highscore_display
@@ -535,12 +542,11 @@ render:
 			push DWORD [highscore]
 			push highscore_label
 			call printf
-			
 			add     esp, 8
 			
 			gotto_level:
-			cmp     DWORD [ebp - 4], 1  ;only print on the second row 
-			jne     gotto_nextblock  ; Only print level on the second row
+			cmp     DWORD [ebp - 4], 2  ;only print on the third row 
+			jne     gotto_nextblock  ; Only print level on the third row
 			movzx ebx, byte[level]
 			push ebx
 		    push    level_label
@@ -549,16 +555,16 @@ render:
 
 			gotto_nextblock:
 			; Print Next Block on the third row
-			cmp     DWORD [ebp - 4], 3
-			jne     gotto_heldblock  ; Only print next block on the third row
+			cmp     DWORD [ebp - 4], 4
+			jne     gotto_heldblock  ; Only print next block on the forth row
 			push    next_blocks_label
 			call    printf
 			add     esp, 4
 
 			gotto_heldblock:
 			; Print Next Block on the third row
-			cmp     DWORD [ebp - 4], 7
-			jne     gotto_block_icon  ; Only print next block on the third row
+			cmp     DWORD [ebp - 4], 8
+			jne     gotto_block_icon 
 			push    held_blocks_label
 			call    printf
 			add     esp, 4
@@ -566,16 +572,16 @@ render:
 			gotto_block_icon:
 			mov al, -2
 			mov edx, -32
-			cmp     DWORD [ebp - 4], 4
-			je     print_icon
 			cmp     DWORD [ebp - 4], 5
+			je     print_icon
+			cmp     DWORD [ebp - 4], 6
 			je     print_icon
 			add edx, 8
 			cmp byte[held_block + 1], 0
 			je skip_next
-			cmp     DWORD [ebp - 4], 8
+			cmp     DWORD [ebp - 4], 7
 			je     print_icon
-			cmp     DWORD [ebp - 4], 9
+			cmp     DWORD [ebp - 4], 8
 			je     print_icon
 			jmp skip_next
 
@@ -587,7 +593,7 @@ render:
 				mov ah, byte [ebp - 4]
 				xor ah, byte [ebp + ecx + 1]
 				test ah, 1
-				jz inner_end
+				jnz inner_end
 				cmp al, byte [ebp + ecx]
 				je print_charecter
 				inner_end:
